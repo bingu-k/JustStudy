@@ -1,117 +1,98 @@
 using System.Collections;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class PlayerController : MonoBehaviour
 {
-    enum PlayerState
-    { Idle, Walk, Run, Jump }
-    PlayerState _state = PlayerState.Idle;
-    PlayerState _prevState = PlayerState.Idle;
+    Define.PlayerState _state = Define.PlayerState.Idle;
+    bool _jump = false;
 
     [SerializeField]
-    float _walkSpeed = 10.0f;
-    [SerializeField]
-    float _runSpeed = 20.0f;
+    float _currentSpeed = 0;
+
+    float _walkSpeed = 2.5f;
+    float _runSpeed = 5f;
+
+    Vector3 _destPos;
 
     Animator _anim = null;
-
+    
     void Start()
     {
         Managers.Input.KeyAction -= OnKeyBoard;
         Managers.Input.KeyAction += OnKeyBoard;
+        Managers.Input.MouseAction -= OnMouseClicked;
+        Managers.Input.MouseAction += OnMouseClicked;
         _anim = GetComponent<Animator>();
+        _destPos = transform.position;
     }
 
     void Update()
     {
-        if (Input.anyKey == false)
-            _state = PlayerState.Idle;
-        if (_state != _prevState)
+        if (_anim.GetCurrentAnimatorStateInfo(0).IsName("Jump") == true && _anim.GetCurrentAnimatorStateInfo(0).normalizedTime >= 0.9f)
         {
-            switch (_state)
-            {
-                case PlayerState.Idle:
-                    _anim.CrossFade("Idle", 0.3f);
-                    break;
-                case PlayerState.Walk:
-                    _anim.CrossFade("Walk", 0.3f);
-                    break;
-                case PlayerState.Run:
-                    _anim.CrossFade("Run", 0.3f);
-                    break;
-                case PlayerState.Jump:
-                    _anim.CrossFade("Jump", 0.3f);
-                    break;
-            }
-            _prevState = _state;
+            _jump = false;
+            _anim.SetBool("Jump", false);
         }
+        ChangeAnimation();
+        Move(_destPos - transform.position);
     }
 
-    void OnKeyBoard()
+    void ChangeAnimation()
     {
-        Vector3 dir = Vector3.zero;
-        CalDirection(ref dir);
-
-        CheckKeyDoubleDown();
-        if (dir != Vector3.zero)
-            Move(dir.normalized);
-        else
-            _state = PlayerState.Idle;
-    }
-
-    void CalDirection(ref Vector3 dir)
-    {
-        if (Input.GetKey(KeyCode.UpArrow))
-            dir += Vector3.forward;
-        if (Input.GetKey(KeyCode.DownArrow))
-            dir += Vector3.back;
-        if (Input.GetKey(KeyCode.RightArrow))
-            dir += Vector3.right;
-        if (Input.GetKey(KeyCode.LeftArrow))
-            dir += Vector3.left;
-    }
-    enum Dir
-    { Up, Down, Left, Right }
-    private float[] _lastKeyDown = { 0, 0, 0, 0 };
-    private float _threshold = 0.3f;
-    void CheckKeyDoubleDown()
-    {
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (_jump == true)
+            _anim.SetBool("Jump", true);
+        switch (_state)
         {
-            if (Time.time - _lastKeyDown[(int)Dir.Up] <= _threshold)
-                _state = PlayerState.Run;
-            _lastKeyDown[(int)Dir.Up] = Time.time;
+            case Define.PlayerState.Idle:
+                _currentSpeed = 0;
+                break;
+            case Define.PlayerState.Walk:
+                _currentSpeed = _walkSpeed;
+                break;
+            case Define.PlayerState.Run:
+                _currentSpeed = _runSpeed;
+                break;
         }
-        if (Input.GetKeyDown(KeyCode.DownArrow))
-        {
-            if (Time.time - _lastKeyDown[(int)Dir.Down] <= _threshold)
-                _state = PlayerState.Run;
-            _lastKeyDown[(int)Dir.Down] = Time.time;
-        }
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
-        {
-            if (Time.time - _lastKeyDown[(int)Dir.Left] <= _threshold)
-                _state = PlayerState.Run;
-            _lastKeyDown[(int)Dir.Left] = Time.time;
-        }
-        if (Input.GetKeyDown(KeyCode.RightArrow))
-        {
-            if (Time.time - _lastKeyDown[(int)Dir.Right] <= _threshold)
-                _state = PlayerState.Run;
-            _lastKeyDown[(int)Dir.Right] = Time.time;
-        }
+        _anim.SetFloat("Speed", _currentSpeed);
     }
 
     private float _turnDeltaSpeed = 0.1f;
     void Move(Vector3 dir)
     {
-        if (_state != PlayerState.Run)
-            _state = PlayerState.Walk;
+        if (dir.magnitude < 0.01f)
+        {
+            _state = Define.PlayerState.Idle;
+            return;
+        }
+
         transform.rotation = Quaternion.Lerp(transform.rotation, Quaternion.LookRotation(dir), _turnDeltaSpeed);
-        if (_state == PlayerState.Walk)
-            transform.position += dir * _walkSpeed * Time.deltaTime;
-        else
-            transform.position += dir * _runSpeed * Time.deltaTime;
+        transform.position += dir.normalized * _currentSpeed * Time.deltaTime;
     }
+
+    #region CallBack Function
+    void OnMouseClicked(Define.MouseEvent evt)
+    {
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        int mask = LayerMask.GetMask("Floor");
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit, 100.0f, mask))
+        {
+            if (_state != Define.PlayerState.Run)
+                _state = Define.PlayerState.Walk;
+            _destPos = hit.point;
+        }
+    }
+
+    void OnKeyBoard()
+    {
+        if (Input.GetKeyDown(KeyCode.Space))
+            _jump = true;
+        if (Input.GetKeyDown(KeyCode.LeftShift))
+            _state = Define.PlayerState.Run;
+        if (Input.GetKeyUp(KeyCode.LeftShift))
+            _state = Define.PlayerState.Walk;
+    }
+    #endregion
 }
